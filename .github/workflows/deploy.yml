@@ -1,4 +1,4 @@
-
+```yaml
 name: TaskFlow CI
 
 on:
@@ -10,9 +10,10 @@ on:
 jobs:
   frontend-build:
     runs-on: ubuntu-latest
+
     defaults:
       run:
-        working-directory: client
+        working-directory: frontend
 
     steps:
       - name: Checkout repository
@@ -22,7 +23,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache-dependency-path: client/package-lock.json
 
       - name: Install frontend dependencies
         run: npm ci
@@ -44,6 +44,6 @@ jobs:
 
       - name: Check backend files
         run: |
-          test -f server/server.js
-          test -f client/package.json
-          echo "Required project files exist"
+          test -d backend
+          test -f backend/manage.py
+          echo "Django backend files exist"
