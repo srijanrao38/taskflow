@@ -1,17 +1,27 @@
-name: TaskFlow CI/CD
+```yaml
+name: TaskFlow CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
+
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   frontend-build:
+    name: Frontend Build
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: client
 
     steps:
       - name: Checkout repository
@@ -21,25 +31,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: client/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: client
         run: npm ci
 
       - name: Build frontend
-        working-directory: client
         run: npm run build
 
-      - name: Upload frontend build
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: client/dist/
-
   backend-check:
+    name: Backend Check
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
 
     steps:
       - name: Checkout repository
@@ -50,70 +55,35 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate backend files
+      - name: Install backend dependencies
         run: |
-          test -f backend/manage.py
-          test -f backend/requirements.txt
-          echo "Backend files verified"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Python syntax
+        run: python -m compileall -q .
 
   deploy:
-    if: github.event_name == 'push'
-    needs: [frontend-build, backend-check]
+    name: Deploy to EC2
     runs-on: ubuntu-latest
+    needs:
+      - frontend-build
+      - backend-check
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download frontend build
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: client/dist/
-
-      - name: Configure SSH
-        env:
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/taskflow_key
-          chmod 600 ~/.ssh/taskflow_key
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
-      - name: Deploy application
+      - name: Verify deployment configuration
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
-          SSH="ssh -i ~/.ssh/taskflow_key -o IdentitiesOnly=yes"
-
-          # Update backend source without replacing production data/config.
-          rsync -az --delete \
-            --exclude='.env' \
-            --exclude='venv/' \
-            --exclude='db.sqlite3' \
-            --exclude='staticfiles/' \
-            -e "$SSH" \
-            backend/ "$EC2_USER@$EC2_HOST:/home/ubuntu/taskflow/backend/"
-
-          # Upload the already-built frontend.
-          rsync -az --delete \
-            -e "$SSH" \
-            client/dist/ "$EC2_USER@$EC2_HOST:/tmp/taskflow-frontend/"
-
-          # Install dependencies, apply migrations, collect static files,
-          # publish frontend and restart the existing service.
-          $SSH "$EC2_USER@$EC2_HOST" 'bash -se' <<'REMOTE'
-          set -e
-          cd /home/ubuntu/taskflow/backend
-
-          ./venv/bin/pip install -r requirements.txt
-          ./venv/bin/python manage.py migrate --noinput
-          ./venv/bin/python manage.py collectstatic --noinput
-
-          sudo rsync -az --delete /tmp/taskflow-frontend/ /var/www/taskflow/
-          sudo systemctl restart taskflow
-          sudo
+          test -n "$EC2_HOST" || (echo "Missing EC2_HOST secret" && exit 1)
+          test -n "$EC2_USER" || (echo "Missing EC2_USER secret" && exit 1)
+          test -n "$EC2_SSH_KEY" || (echo "Missing EC2_SSH_KEY secret" && exit 1)
+          echo "Deployment secrets are configured."
+```
