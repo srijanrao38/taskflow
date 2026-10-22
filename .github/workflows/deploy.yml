@@ -31,6 +31,7 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+ 
   backend-check:
     runs-on: ubuntu-latest
 
@@ -43,8 +44,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Check backend files
-        run: |
-          test -d backend
-          test -f backend/manage.py
-          echo "Django backend files exist"
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Check Django configuration
+        working-directory: backend
+        run: python manage.py check
