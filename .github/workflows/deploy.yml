@@ -1,0 +1,22 @@
+
+name: TaskFlow CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-project:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show project structure
+        run: |
+          echo "Repository checked out successfully"
+          ls -la
+          echo "CI workflow is running"
