@@ -54,4 +54,3 @@ jobs:
       - name: Check Python syntax
         working-directory: backend
         run: python -m compileall -q .
-```
